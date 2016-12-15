@@ -273,13 +273,13 @@ bool Image::checkSol()
 
 int main()
 {
-	Image i("george.bmp");
+	Image i("image/george.bmp");
 	i.readImage();
 	//i.printImageArray();
 	i.smoothen();
-	i.writeImage("processed.bmp",false);
+	i.writeImage("image/processed.bmp",false);
 	i.smoothenParallel();
-	i.writeImage("processedParallel.bmp",true);
+	i.writeImage("image/processedParallel.bmp",true);
 	cout<< "Gain compared to Sequencial Algo is " <<  i.getGain() << " times\n";
 	bool res = i.checkSol();
 	if(res)
