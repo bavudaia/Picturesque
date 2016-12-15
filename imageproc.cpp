@@ -69,46 +69,49 @@ Image::Image(const char* fileName)
 	filterTotal();
 	imageInputStream = new ifstream;
 	imageInputStream->open(fileName, ios::in | ios::binary);
-	imageInputStream->seekg(0,ios::beg);
-	imageInputStream->read(reinterpret_cast<char*> (imageHeaderFirst54) , HEADER_SIZE);
-	/*
-	for(int i=0;i<54;i++)
+	if(imageInputStream)
 	{
-		int x = *(int *)&imageHeaderFirst54[i];
-		cout<< i << "  : " << x <<"\n";
-	}
-	*/
-	 
-	width = *(int *)&imageHeaderFirst54[18];
-	height = *(int *)&imageHeaderFirst54[22];
-	offsetToStart = *(int *)&imageHeaderFirst54[10];
-	cout<<"Start of image" << offsetToStart << "\n";
-	imageHeaderRest = new unsigned char[offsetToStart-HEADER_SIZE];
-	
-	imageInputStream->read(reinterpret_cast<char*> (imageHeaderRest)  , offsetToStart- HEADER_SIZE);
-	
-	imageData = new unsigned char* [height];
-	processedData = new unsigned char* [height];
-	processedDataParallel = new unsigned char* [height];
-	
-	for(int i=0;i<height;i++)
-	{
-		imageData[i] = new unsigned char[width];
-		processedData[i] = new unsigned char[width];
-		processedDataParallel[i] = new unsigned char[width];
-	}
+		imageInputStream->seekg(0,ios::beg);
+		imageInputStream->read(reinterpret_cast<char*> (imageHeaderFirst54) , HEADER_SIZE);
+		/*
+		for(int i=0;i<54;i++)
+		{
+			int x = *(int *)&imageHeaderFirst54[i];
+			cout<< i << "  : " << x <<"\n";
+		}
+		*/
+		 
+		width = *(int *)&imageHeaderFirst54[18];
+		height = *(int *)&imageHeaderFirst54[22];
+		offsetToStart = *(int *)&imageHeaderFirst54[10];
+		cout<<"Start of image" << offsetToStart << "\n";
+		imageHeaderRest = new unsigned char[offsetToStart-HEADER_SIZE];
+		
+		imageInputStream->read(reinterpret_cast<char*> (imageHeaderRest)  , offsetToStart- HEADER_SIZE);
+		
+		imageData = new unsigned char* [height];
+		processedData = new unsigned char* [height];
+		processedDataParallel = new unsigned char* [height];
+		
+		for(int i=0;i<height;i++)
+		{
+			imageData[i] = new unsigned char[width];
+			processedData[i] = new unsigned char[width];
+			processedDataParallel[i] = new unsigned char[width];
+		}
 
-	imageInputStream->seekg(0,ios::end);
-	int len = imageInputStream->tellg();
-	cout<<"Length : " << len <<"\n";
-	cout<< "Expected Width : "<<(len-offsetToStart)/height <<"\n";
-	imageInputStream->seekg(offsetToStart,ios::beg);
+		imageInputStream->seekg(0,ios::end);
+		int len = imageInputStream->tellg();
+		cout<<"Length : " << len <<"\n";
+		cout<< "Expected Width : "<<(len-offsetToStart)/height <<"\n";
+		imageInputStream->seekg(offsetToStart,ios::beg);
+	}
 }
 
 Image::~Image()
 {
     delete imageInputStream;
-    
+    delete imageOutputStream;
     for(int i=0; i<height; i++){
         delete[] imageData[i];
         delete[] processedData[i];
@@ -119,7 +122,6 @@ Image::~Image()
     delete[] processedData;
     delete[] processedDataParallel;
     delete[] imageHeaderRest;
-    //delete[] imageHeaderFirst54;
 }
 
 void Image::readImage()
