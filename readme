@@ -1,0 +1,14 @@
+Install g++ 6.2
+
+sudo add-apt-repository ppa:ubuntu-toolchain-r/test
+sudo apt-get update
+sudo apt-get install gcc-6 g++-6
+
+sudo apt-get upgrade gcc-6
+sudo apt-get upgrade g++-6
+
+To Compile
+g++-6 imageproc.cpp -fopenmp -o i.o
+
+To run
+./i.o
