@@ -4,9 +4,10 @@ using namespace std;
 #include <cmath>
 #include <cstring>
 #include <cstdlib>
+#include <algorithm>	
 #include "omp.h"
 #define HEADER_SIZE 54
-#define THRESHOLD 256
+#define THRESHOLD 1
 #define NUM_THREADS 5
 class Image
 {
@@ -37,6 +38,10 @@ class Image
 	void printImageArray();
 	void smoothen();
 	void smoothenParallel();
+	void medianFilter();
+	void medianFilterParallel();
+	void swirl();
+	void swirlParallel();
 	void filterTotal();
 	int getHeight();
 	int getWidth();
@@ -64,7 +69,6 @@ int Image::getWidth()
 
 Image::Image(const char* fileName)
 {
-	
 	//filter = {{1,1,1},{1,2,1},{1,1,1}};
 	filterTotal();
 	imageInputStream = new ifstream;
@@ -219,7 +223,7 @@ void Image::smoothenParallel()
 {
 	//Measure metrics here 
 	double start = omp_get_wtime();
-	omp_set_num_threads(5);
+	omp_set_num_threads(NUM_THREADS);
 	#pragma omp parallel
 	{
 		#pragma omp for
@@ -239,7 +243,8 @@ void Image::smoothenParallel()
 							  filter[2][2] * imageData[i+1][j+1];  
 			   
 				  int avg = sum/filterSum;
-				  processedDataParallel[i][j] = avg;
+				  if(abs(avg - imageData[i][j]) <= THRESHOLD)
+					processedDataParallel[i][j] = avg;
 			}
 		}
 	}
@@ -264,7 +269,7 @@ bool Image::checkSol()
 	{
 		for(int j=0;j<width;j++)
 		{
-			//if(imageData[i][j] != processedDataParallel[i][j]) to check if data is modified at all
+			//if(imageData[i][j] != processedDataParallel[i][j]) //to check if data is modified at all
 			if(processedData[i][j] != processedDataParallel[i][j])
 			  return false;
 		}
@@ -272,18 +277,107 @@ bool Image::checkSol()
 	return true;
 }
 
+/* Median Filter with window size 3*3 matrix for simplicity */
+/* This is used for Noise reduction in images */
+void Image::medianFilterParallel()
+{
+	double start = omp_get_wtime();
+	omp_set_num_threads(NUM_THREADS);
+	#pragma omp parallel for
+	for(int i=2;i<height-2;i++)
+	{
+		for(int j=2;j<width-2;j++)
+		{
+			unsigned char* window = new unsigned char[25];
+			int k=0;
+			/* get the 5*5 window */
+			for(int a=i-2;a<=i+2;a++)
+			{
+				for(int b=j-2;b<=j+2;b++)
+				{
+					window[k++] = imageData[a][b];
+				}
+			}
+			/* calc median for the window */
+			std::sort(window,window+25);
+			unsigned char median = window[12];
+			/* Assign median val */
+			processedDataParallel[i][j] = median;
+			
+		}
+	}
+	
+	double end = omp_get_wtime();
+	timeTakenParallel = end - start;
+	cout<<"Smoothen time taken End : " <<timeTakenParallel <<"\n"; 
+	gain = timeTakenSerial/timeTakenParallel;
+}
+
+
+void Image::medianFilter()
+{
+	double start = omp_get_wtime();
+	for(int i=2;i<height-2;i++)
+	{
+		for(int j=2;j<width-2;j++)
+		{
+			unsigned char* window = new unsigned char[25];
+			int k=0;
+			
+			/* get the 5*5 window */
+			for(int a=i-2;a<=i+2;a++)
+			{
+				for(int b=j-2;b<=j+2;b++)
+				{
+					window[k++] = imageData[a][b];
+				}
+			}
+			
+			/* calc median for the window */
+			std::sort(window,window+25);
+			unsigned char median = window[12];
+			/* Assign median val */
+			processedData[i][j] = median;
+			
+		}
+	}
+	
+	double end = omp_get_wtime();
+	timeTakenSerial = end - start;
+	cout<<"Smoothen time taken End : " <<timeTakenSerial<<"\n"; 
+}
 
 int main()
 {
-	Image i("image/george.bmp");
+	Image i("image/baboon_noise.bmp");
 	i.readImage();
+	cout<<i.checkSol();
 	//i.printImageArray();
-	i.smoothen();
-	i.writeImage("image/processed.bmp",false);
-	i.smoothenParallel();
-	i.writeImage("image/processedParallel.bmp",true);
-	cout<< "Gain compared to Sequencial Algo is " <<  i.getGain() << " times\n";
-	bool res = i.checkSol();
+	cout<<"What type of Image Processing \n";
+	cout<<"1. Smoothening\n";
+	cout<<"2. Noise Reduction by Median Filtering\n";
+	cout<<"Enter Choice : ";
+	int choice;
+	cin>>choice;
+	bool res = false;
+	if(choice == 1)
+	{
+		i.smoothen();
+		i.writeImage("image/processed.bmp",false);
+		i.smoothenParallel();
+		i.writeImage("image/processedParallel.bmp",true);
+		cout<< "Gain compared to Sequencial Algo is " <<  i.getGain() << " times\n";
+		res = i.checkSol();
+	}
+	else if(choice == 2)
+	{
+		i.medianFilter();
+		i.writeImage("image/processed.bmp",false);
+		i.medianFilterParallel();
+		i.writeImage("image/processedParallel.bmp",true);
+		cout<< "Gain compared to Sequencial Algo is " <<  i.getGain() << " times\n";
+		res = i.checkSol();
+	}
 	if(res)
 	  cout<< "Results Match" <<"\n";
 	else
