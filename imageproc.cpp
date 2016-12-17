@@ -347,6 +347,11 @@ void Image::medianFilter()
 	cout<<"Smoothen time taken End : " <<timeTakenSerial<<"\n"; 
 }
 
+void Image::swirl()
+{
+	/* process image data and put into processData*/
+}
+
 int main()
 {
 	Image i("image/baboon_noise.bmp");
