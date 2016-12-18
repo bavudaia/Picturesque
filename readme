@@ -12,3 +12,16 @@ g++-6 imageproc.cpp -fopenmp -o i.o
 
 To run
 ./i.o
+
+
+-- Instructions--
+
+/* Image library whose constructor loads the image into height*width 2D matrix and manipulates it 
+ * using 5 algorithms
+ * 1 . Smooth Filtering using a 3*3 gaussian filter  -- Test with Pepper.bmp(512*512) , man.bmp(1024*1024)
+ * 2 . Noise Reduction by Median Filtering (5*5 window) --  Test with img.bmp, baboon_noise.bmp
+ * 3 . Noise Reduction by Mean Filtering (5*5 Window)  -- Test with 
+ * 4 . Contrast improvement by using Historgram Equalization Algo -- Test with elaine.bmp man.bmp 
+ * 5 . Image Swirl by using projection  -- Test with man.bmp
+ * 6 . Performance Testing by getting gain wrt number of threads and plotting a graph
+ * */
