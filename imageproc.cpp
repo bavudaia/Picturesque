@@ -7,8 +7,9 @@ using namespace std;
 #include <algorithm>	
 #include "omp.h"
 #define HEADER_SIZE 54
-#define THRESHOLD 1
-#define NUM_THREADS 5
+#define THRESHOLD 256
+#define NUM_THREADS 10
+#define PI 3.141592653589793238462643383
 class Image
 {
 	private:
@@ -36,17 +37,37 @@ class Image
 	void readImage();
 	void writeImage(const char* fileName, bool isParallel);
 	void printImageArray();
+	/* Smooth Filter*/
 	void smoothen();
 	void smoothenParallel();
+	/* Noise reduction by Median Filtering */
 	void medianFilter();
 	void medianFilterParallel();
-	void swirl();
-	void swirlParallel();
+	
 	void filterTotal();
 	int getHeight();
 	int getWidth();
 	double getGain();
 	bool checkSol();
+	
+	/* Mean Filter for Noise Reduction*/
+	void meanFilter();
+	void meanFilterParallel();
+	
+	/* Improve Contrast of Image using Histogram Equalizer*/
+	void histogramEqualizer();
+	void histogramEqualizerParallel();
+	
+	/* Image Swirl */
+	void swirl();
+	void swirlParallel();
+	
+	/*Test functions*/
+	void smoothenTest(int num_threads);
+	void swirlTest(int num_threads);
+	void medianFilterTest(int num_threads);
+	void meanFilterTest(int num_threads);
+	void histogramEqualizerTest(int num_threads);
 };
 
 double Image::getGain()
@@ -72,6 +93,7 @@ Image::Image(const char* fileName)
 	//filter = {{1,1,1},{1,2,1},{1,1,1}};
 	filterTotal();
 	imageInputStream = new ifstream;
+	imageOutputStream = new ofstream;
 	imageInputStream->open(fileName, ios::in | ios::binary);
 	if(imageInputStream)
 	{
@@ -134,11 +156,8 @@ void Image::readImage()
 	cout<<"width : " << width << "\n" << "height : " << height<<"\n";
 	for(int i=0;i<height;i++)
 	{
-
-			imageInputStream->read(reinterpret_cast<char*> (imageData[i]),width);
-		
+		imageInputStream->read(reinterpret_cast<char*> (imageData[i]),width);
 		//cout<< "Image Data Length Row "<< i <<"  : " << strlen(reinterpret_cast<char *> (imageData[i])) <<"\n"; 
-	  
 		memcpy(reinterpret_cast<void*>(processedData[i]), reinterpret_cast<void*>(imageData[i]),width);
 		memcpy(reinterpret_cast<void*>(processedDataParallel[i]), reinterpret_cast<void*>(imageData[i]),width);
 	}
@@ -161,7 +180,6 @@ void Image::readImage()
 
 void Image::writeImage(const char* fileName, bool isParallel)
 {
-	imageOutputStream = new ofstream;
 	imageOutputStream->open(fileName , ios::out | ios::binary | ios::trunc);
 	imageOutputStream->write(reinterpret_cast<char*> (imageHeaderFirst54) , HEADER_SIZE);
 	imageOutputStream->write(reinterpret_cast<char*> (imageHeaderRest) , offsetToStart-HEADER_SIZE);
@@ -254,6 +272,41 @@ void Image::smoothenParallel()
 	gain = timeTakenSerial/timeTakenParallel;
 }
 
+void Image::smoothenTest(int num_threads)
+{
+		//Measure metrics here 
+	double start = omp_get_wtime();
+	omp_set_num_threads(num_threads);
+	#pragma omp parallel
+	{
+		#pragma omp for
+		for(int i=1;i<height-1;i++)
+		{
+			for(int j=1;j<width-1;j++)
+			{
+				
+				int sum = filter[0][0] * imageData[i-1][j-1] + 
+							  filter[0][1] * imageData[i-1][j]   + 
+							  filter[0][2] * imageData[i-1][j+1] + 
+							  filter[1][0] * imageData[i][j-1]   + 
+							  filter[1][1] * imageData[i][j]     + 
+							  filter[1][2] * imageData[i][j+1]   +
+							  filter[2][0] * imageData[i+1][j-1] + 
+							  filter[2][1] * imageData[i+1][j]   + 
+							  filter[2][2] * imageData[i+1][j+1];  
+			   
+				  int avg = sum/filterSum;
+				  if(abs(avg - imageData[i][j]) <= THRESHOLD)
+					processedDataParallel[i][j] = avg;
+			}
+		}
+	}
+	double end = omp_get_wtime();
+	timeTakenParallel = end - start;
+	gain = timeTakenSerial/timeTakenParallel;
+	cout<<num_threads<<","<<gain<<"\n";
+}
+
 void Image::filterTotal()
 {
     filterSum = 0;
@@ -309,8 +362,41 @@ void Image::medianFilterParallel()
 	
 	double end = omp_get_wtime();
 	timeTakenParallel = end - start;
-	cout<<"Smoothen time taken End : " <<timeTakenParallel <<"\n"; 
+	cout<<"Median Filter time taken End : " <<timeTakenParallel <<"\n"; 
 	gain = timeTakenSerial/timeTakenParallel;
+}
+
+void Image::medianFilterTest(int num_threads)
+{
+	double start = omp_get_wtime();
+	omp_set_num_threads(num_threads);
+	#pragma omp parallel for
+	for(int i=2;i<height-2;i++)
+	{
+		for(int j=2;j<width-2;j++)
+		{
+			unsigned char* window = new unsigned char[25];
+			int k=0;
+			/* get the 5*5 window */
+			for(int a=i-2;a<=i+2;a++)
+			{
+				for(int b=j-2;b<=j+2;b++)
+				{
+					window[k++] = imageData[a][b];
+				}
+			}
+			/* calc median for the window */
+			std::sort(window,window+25);
+			unsigned char median = window[12];
+			/* Assign median val */
+			processedDataParallel[i][j] = median;
+			
+		}
+	}
+	double end = omp_get_wtime();
+	timeTakenParallel = end - start;
+	gain = timeTakenSerial/timeTakenParallel;
+	cout<<num_threads<<","<<gain<<"\n";
 }
 
 
@@ -322,8 +408,7 @@ void Image::medianFilter()
 		for(int j=2;j<width-2;j++)
 		{
 			unsigned char* window = new unsigned char[25];
-			int k=0;
-			
+			int k=0;			
 			/* get the 5*5 window */
 			for(int a=i-2;a<=i+2;a++)
 			{
@@ -332,37 +417,413 @@ void Image::medianFilter()
 					window[k++] = imageData[a][b];
 				}
 			}
-			
 			/* calc median for the window */
 			std::sort(window,window+25);
 			unsigned char median = window[12];
 			/* Assign median val */
 			processedData[i][j] = median;
+		}
+	}
+	
+	double end = omp_get_wtime();
+	timeTakenSerial = end - start;
+	cout<<"Median Filter time taken End : " <<timeTakenSerial<<"\n"; 
+}
+
+
+void Image::meanFilter()
+{
+	double start = omp_get_wtime();
+	
+	for(int i=2;i<height-2;i++)
+	{
+		for(int j=2;j<width-2;j++)
+		{
+			unsigned char* window = new unsigned char[25];
+			int sum =0;
+			
+			/* get the 5*5 window */
+			for(int a=i-2;a<=i+2;a++)
+			{
+				for(int b=j-2;b<=j+2;b++)
+				{
+					sum+= imageData[a][b];
+				}
+			}
+			
+			/* calc mean for the window */
+			
+			unsigned char mean = sum/25;
+			/* Assign mean val */
+			processedData[i][j] = mean;
 			
 		}
 	}
 	
 	double end = omp_get_wtime();
 	timeTakenSerial = end - start;
-	cout<<"Smoothen time taken End : " <<timeTakenSerial<<"\n"; 
+	cout<<"Mean Filter time taken End : " <<timeTakenSerial<<"\n"; 
+}
+
+/* Mean Filter with window size 5*5 matrix for simplicity */
+/* This is used for Noise reduction in images */
+void Image::meanFilterParallel()
+{
+	double start = omp_get_wtime();
+	omp_set_num_threads(NUM_THREADS);
+	#pragma omp parallel for
+	for(int i=2;i<height-2;i++)
+	{
+		for(int j=2;j<width-2;j++)
+		{
+			int sum =0;
+			int k=0;
+			/* get the 5*5 window */
+			for(int a=i-2;a<=i+2;a++)
+			{
+				for(int b=j-2;b<=j+2;b++)
+				{
+					sum+= imageData[a][b];
+				}
+			}
+			/* calc mean for the window */
+			unsigned char mean = sum/25;
+			/* Assign mean val */
+			processedDataParallel[i][j] = mean;		
+		}
+	}
+	double end = omp_get_wtime();
+	timeTakenParallel = end - start;
+	cout<<"Mean Filter time taken End : " <<timeTakenParallel <<"\n"; 
+	gain = timeTakenSerial/timeTakenParallel;
+}
+
+void Image::meanFilterTest(int num_threads)
+{
+	double start = omp_get_wtime();
+	omp_set_num_threads(num_threads);
+	#pragma omp parallel for
+	for(int i=2;i<height-2;i++)
+	{
+		for(int j=2;j<width-2;j++)
+		{
+			int sum =0;
+			int k=0;
+			/* get the 5*5 window */
+			for(int a=i-2;a<=i+2;a++)
+			{
+				for(int b=j-2;b<=j+2;b++)
+				{
+					sum+= imageData[a][b];
+				}
+			}
+			/* calc mean for the window */
+			unsigned char mean = sum/25;
+			/* Assign mean val */
+			processedDataParallel[i][j] = mean;		
+		}
+	}
+	double end = omp_get_wtime();
+	timeTakenParallel = end - start;
+	gain = timeTakenSerial/timeTakenParallel;
+	cout<<num_threads<<","<<gain<<"\n";	
+}
+
+/* Histogram Equalizer to improve image contrast */
+void Image::histogramEqualizer()
+{
+	double start = omp_get_wtime();
+	int hist[256];
+	for(int i=0;i<256;i++)
+	  hist[i] = 0;
+	/* populate histogram with frequency*/
+	for(int i=0;i<height;i++)
+	{
+		for(int j=0;j<width;j++)
+		{
+			unsigned char val = imageData[i][j];
+			++hist[val];
+		}
+	}
+	int localSum = 0, cumulativeMin = 255,firstFlag = false;
+	
+	/* prepare cumulative histogram */
+	for(int i=0;i<256;i++)
+	{
+		if(hist[i])
+		{
+			if(!firstFlag)
+			{
+				firstFlag = true;
+				cumulativeMin = hist[i];
+			}
+			hist[i] = localSum + hist[i];
+			localSum = hist[i];
+		}
+	}	
+	unsigned char normalized[256];
+	for(int i=0;i<256;i++)
+	  normalized[i] = 0;
+	for(int i=0;i<256;i++)
+	{
+		if(hist[i])
+		{
+			double val = ((double)(hist[i] - cumulativeMin)) / ((double)(height*width - 1)) * 255.0;
+			normalized[i] = std::round(val);
+		}
+	}
+	
+	for(int i=0;i<height;i++)
+	{
+		for(int j=0;j<width;j++)
+		{
+			unsigned char val = normalized[imageData[i][j]];
+			processedData[i][j] = val;
+		}
+	}
+	
+	double end = omp_get_wtime();
+	timeTakenParallel = end - start;
+	cout<<"Histogram Equalizer Sequential time taken End : " <<timeTakenParallel <<"\n"; 
+}
+
+void Image::histogramEqualizerParallel()
+{
+	int PAD = 1;
+	double start = omp_get_wtime();
+	omp_set_num_threads(NUM_THREADS);
+	int hist[256*PAD];
+	for(int i=0;i<256*PAD;i+=PAD)
+	  hist[i] = 0;
+	
+	/* populate histogram with frequency*/
+	omp_lock_t* lock = new omp_lock_t[256*PAD];
+	for(int i=0;i<256*PAD;i+=PAD)
+		omp_init_lock(lock+i);
+	#pragma omp parallel for
+	for(int i=0;i<height;i++)
+	{
+		for(int j=0;j<width;j++)
+		{
+			int val = imageData[i][j]*PAD;
+			omp_set_lock(lock + val);
+			//#pragma omp critical
+			++hist[val];
+			omp_unset_lock(lock + val);
+		}
+	}
+	for(int i=0;i<256*PAD;i+=PAD)
+		omp_destroy_lock(lock+i);
+	int localSum = 0, cumulativeMin = 255,firstFlag = false;
+	
+	/* prepare cumulative histogram */
+	for(int i=0;i<256*PAD;i+=PAD)
+	{
+		if(hist[i])
+		{
+			if(!firstFlag)
+			{
+				firstFlag = true;
+				cumulativeMin = hist[i];
+			}
+			hist[i] = localSum + hist[i];
+			localSum = hist[i];
+		}
+	}	
+	unsigned char normalized[256*PAD];
+	for(int i=0;i<256*PAD;i+=PAD)
+	{
+		if(hist[i])
+		{
+			double val = ((double)(hist[i] - cumulativeMin)) / ((double)(height*width - 1)) * 255.0;
+			normalized[i] = std::round(val);
+		}
+	}
+	omp_set_num_threads(NUM_THREADS);
+	#pragma omp parallel for
+	for(int i=0;i<height;i++)
+	{
+		for(int j=0;j<width;j++)
+		{
+			processedDataParallel[i][j] = normalized[imageData[i][j]*PAD];
+		}
+	}
+	
+	double end = omp_get_wtime();
+	timeTakenSerial = end - start;
+	cout<<"Histogram Equalizer parallel time taken End : " <<timeTakenSerial <<"\n"; 
+	gain = timeTakenSerial/timeTakenParallel;
+}
+
+void Image::histogramEqualizerTest(int num_threads)
+{
+	int PAD = 1;
+	double start = omp_get_wtime();
+	omp_set_num_threads(num_threads);
+	int hist[256*PAD];
+	for(int i=0;i<256*PAD;i+=PAD)
+	  hist[i] = 0;
+	
+	/* populate histogram with frequency*/
+	omp_lock_t* lock = new omp_lock_t[256*PAD];
+	for(int i=0;i<256*PAD;i+=PAD)
+		omp_init_lock(lock+i);
+	#pragma omp parallel for
+	for(int i=0;i<height;i++)
+	{
+		for(int j=0;j<width;j++)
+		{
+			int val = imageData[i][j]*PAD;
+			omp_set_lock(lock + val);
+			//#pragma omp critical
+			++hist[val];
+			omp_unset_lock(lock + val);
+		}
+	}
+	for(int i=0;i<256*PAD;i+=PAD)
+		omp_destroy_lock(lock+i);
+	int localSum = 0, cumulativeMin = 255,firstFlag = false;
+	
+	/* prepare cumulative histogram */
+	for(int i=0;i<256*PAD;i+=PAD)
+	{
+		if(hist[i])
+		{
+			if(!firstFlag)
+			{
+				firstFlag = true;
+				cumulativeMin = hist[i];
+			}
+			hist[i] = localSum + hist[i];
+			localSum = hist[i];
+		}
+	}	
+	unsigned char normalized[256*PAD];
+	for(int i=0;i<256*PAD;i+=PAD)
+	{
+		if(hist[i])
+		{
+			double val = ((double)(hist[i] - cumulativeMin)) / ((double)(height*width - 1)) * 255.0;
+			normalized[i] = std::round(val);
+		}
+	}
+	omp_set_num_threads(num_threads);
+	#pragma omp parallel for
+	for(int i=0;i<height;i++)
+	{
+		for(int j=0;j<width;j++)
+		{
+			processedDataParallel[i][j] = normalized[imageData[i][j]*PAD];
+		}
+	}
+	
+	double end = omp_get_wtime();
+	timeTakenSerial = end - start;
+	gain = timeTakenSerial/timeTakenParallel;	
+	cout<<num_threads<<","<<gain<<"\n";
 }
 
 void Image::swirl()
+{	
+	double start = omp_get_wtime();
+	double i0 = (height-1)/2.0;
+	double j0 = (width -1)/2.0;
+	for(int i=0;i<height;i++)
+	{
+		int ri=-1,rj=-1;
+		for(int j=0;j<width;j++)
+		{
+			double di = i-i0;
+			double dj = j-j0;
+			double r = sqrt(di*di + dj*dj);
+		    double theta = PI/256.0*r;
+		    int ri = (int) (di*cos(theta) - dj*sin(theta) + i0);
+		    int rj = (int) (di*sin(theta) + dj*cos(theta) + j0);
+			if(ri >=0 && rj>=0 && ri<height&& rj<width)
+				processedData[i][j] = imageData[ri][rj];
+		}
+	}
+	double end = omp_get_wtime();
+	timeTakenSerial = end - start;
+	cout<<"Swirl Sequential time taken : "<<timeTakenSerial<<"\n";
+}
+
+void Image::swirlParallel()
+{	
+	double i0 = (height-1)/2.0;
+	double j0 = (width -1)/2.0;
+	omp_set_num_threads(NUM_THREADS);
+	double start = omp_get_wtime();
+	#pragma omp parallel for
+	for(int i=0;i<height;i++)
+	{
+		int ri=-1,rj=-1;
+		for(int j=0;j<width;j++)
+		{
+			double di = i-i0;
+			double dj = j-j0;
+			double r = sqrt(di*di + dj*dj);
+		    double theta = PI/256.0*r;
+		    int ri = (int) (di*cos(theta) - dj*sin(theta) + i0);
+		    int rj = (int) (di*sin(theta) + dj*cos(theta) + j0);
+			if(ri >=0 && rj>=0 && ri<height&& rj<width)
+				processedDataParallel[i][j] = imageData[ri][rj];
+		}
+	}	
+	double end = omp_get_wtime();
+	timeTakenParallel = end - start;
+	cout<<"Swirl Parallel time taken : " <<timeTakenParallel<<"\n";
+	double gain = timeTakenSerial/timeTakenParallel;
+}
+
+void Image::swirlTest(int num_threads)
 {
-	/* process image data and put into processData*/
+	double i0 = (height-1)/2.0;
+	double j0 = (width -1)/2.0;
+	omp_set_num_threads(num_threads);
+	double start = omp_get_wtime();
+	#pragma omp parallel for
+	for(int i=0;i<height;i++)
+	{
+		int ri=-1,rj=-1;
+		for(int j=0;j<width;j++)
+		{
+			double di = i-i0;
+			double dj = j-j0;
+			double r = sqrt(di*di + dj*dj);
+		    double theta = PI/256.0*r;
+		    int ri = (int) (di*cos(theta) - dj*sin(theta) + i0);
+		    int rj = (int) (di*sin(theta) + dj*cos(theta) + j0);
+			if(ri >=0 && rj>=0 && ri<height&& rj<width)
+				processedDataParallel[i][j] = imageData[ri][rj];
+		}
+	}	
+	double end = omp_get_wtime();
+	timeTakenParallel = end-start;
+	gain = timeTakenSerial/timeTakenParallel;
+	cout<<num_threads<<","<<gain<<"\n";
 }
 
 int main()
 {
-	Image i("image/baboon_noise.bmp");
+    char imageFileName[15] ;
+    fgets(imageFileName,15,stdin);
+    strtok(imageFileName,"\n");
+    
+	char input[30] = "image/";
+	strcat(input,imageFileName);
+	cout << input ;
+	Image i(input);
 	i.readImage();
-	cout<<i.checkSol();
-	//i.printImageArray();
 	cout<<"What type of Image Processing \n";
 	cout<<"1. Smoothening\n";
 	cout<<"2. Noise Reduction by Median Filtering\n";
+	cout<<"3. Noise Reduction by Mean Filtering \n";
+	cout<<"4. Improving contrast by Histogram Equalization \n";
+	cout<<"5. Swirl the Image\n";
+	cout<<"6. Performance Report\n";
 	cout<<"Enter Choice : ";
-	int choice;
+	int choice=0;
 	cin>>choice;
 	bool res = false;
 	if(choice == 1)
@@ -382,6 +843,58 @@ int main()
 		i.writeImage("image/processedParallel.bmp",true);
 		cout<< "Gain compared to Sequencial Algo is " <<  i.getGain() << " times\n";
 		res = i.checkSol();
+	}
+	else if(choice == 3)
+	{
+		i.meanFilter();
+		i.writeImage("image/processed.bmp",false);
+		i.meanFilterParallel();
+		i.writeImage("image/processedParallel.bmp",true);
+		cout<< "Gain compared to Sequencial Algo is " <<  i.getGain() << " times\n";
+		res = i.checkSol();
+	}
+	else if(choice == 4)
+	{
+		i.histogramEqualizer();
+		i.writeImage("image/processed.bmp",false);
+		i.histogramEqualizerParallel();
+		i.writeImage("image/processedParallel.bmp",true);
+		cout<< "Gain compared to Sequencial Algo is " <<  i.getGain() << " times\n";
+		res = i.checkSol();
+	}
+    else if(choice == 5)
+	{
+		i.swirl();
+		i.writeImage("image/processed.bmp",false);
+		i.swirlParallel();
+		i.writeImage("image/processedParallel.bmp",true);
+		cout<< "Gain compared to Sequencial Algo is " <<  i.getGain() << " times\n";
+		res = i.checkSol();
+	}
+	else if(choice == 6)
+	{
+		cout<<"Performance Report -- Number of threads vs Gain \n";
+		cout<<"Smooth Filtering\n";
+		i.smoothen();
+		int iters = 50;
+		for(int x=1;x<=iters;x++)
+			i.smoothenTest(x);
+		cout<<"Median Filter\n";
+		i.medianFilter();
+		for(int x=1;x<=iters;x++)
+			i.medianFilterTest(x);
+		cout<<"Mean Filter\n";
+		i.meanFilter();
+		for(int x=1;x<=iters;x++)
+			i.meanFilterTest(x);
+		cout<<"Histogram Equalization\n";
+		i.histogramEqualizer();
+		for(int x=1;x<=iters;x++)
+			i.histogramEqualizerTest(x);
+		cout<<"Swirl\n";
+		i.swirl();
+		for(int x=1;x<=iters;x++)
+			i.swirlTest(x);
 	}
 	if(res)
 	  cout<< "Results Match" <<"\n";
