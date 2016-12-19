@@ -824,7 +824,7 @@ void Image::histogramEqualizerTest(int num_threads)
 	}
 	
 	double end = omp_get_wtime();
-	timeTakenSerial = end - start;
+	timeTakenParallel = end - start;
 	gain = timeTakenSerial/timeTakenParallel;	
 	cout<<num_threads<<","<<gain<<"\n";
 }
@@ -959,10 +959,12 @@ int main()
 	}
 	else if(choice == 6)
 	{
+		int iters = 50;
+		
 		cout<<"Performance Report -- Number of threads vs Gain \n";
 		cout<<"Smooth Filtering\n";
 		i.smoothen();
-		int iters = 50;
+		
 		for(int x=1;x<=iters;x++)
 			i.smoothenTest(x);
 		cout<<"Median Filter\n";
@@ -973,14 +975,17 @@ int main()
 		i.meanFilter();
 		for(int x=1;x<=iters;x++)
 			i.meanFilterTest(x);
+			
 		cout<<"Histogram Equalization\n";
 		i.histogramEqualizer();
 		for(int x=1;x<=iters;x++)
 			i.histogramEqualizerTest(x);
+			
 		cout<<"Swirl\n";
 		i.swirl();
 		for(int x=1;x<=iters;x++)
 			i.swirlTest(x);
+			
 	}
 	if(res)
 	  cout<< "Results Match" <<"\n";
