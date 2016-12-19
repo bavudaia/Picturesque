@@ -19,6 +19,7 @@ using namespace std;
  * 3 . Noise Reduction by Mean Filtering (5*5 Window)  -- Test with img.bmp, baboon_noise.bmp
  * 4 . Contrast improvement by using Historgram Equalization Algo -- Test with elaine.bmp man.bmp 
  * 5 . Image Swirl by using projection  -- Test with man.bmp
+ * 
  * */
 class Image
 {
@@ -630,7 +631,7 @@ void Image::meanFilterTest(int num_threads)
 	cout<<num_threads<<","<<gain<<"\n";	
 }
 
-
+/* Parallel algo with locks for each index of hist[] */
 void Image::histogramEqualizerParallel()
 {
 	/* Padding to avoid false sharing*/
