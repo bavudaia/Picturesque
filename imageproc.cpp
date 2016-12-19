@@ -892,13 +892,14 @@ void Image::swirlTest(int num_threads)
 
 int main()
 {
-    char imageFileName[15] ;
+    char imageFileName[30] ;
+    cout << "Enter Image File Name : " ;
     fgets(imageFileName,15,stdin);
     strtok(imageFileName,"\n");
     
 	char input[30] = "image/";
 	strcat(input,imageFileName);
-	cout << "Enter Image File Name : " ;
+	
 	Image i(input);
 	i.readImage();
 	cout<<"What type of Image Processing \n";
