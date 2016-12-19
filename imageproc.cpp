@@ -67,6 +67,7 @@ class Image
 	/* Improve Contrast of Image using Histogram Equalizer*/
 	void histogramEqualizer();
 	void histogramEqualizerParallel();
+	void histogramEqualizerParallelNoLock();
 	
 	/* Image Swirl */
 	void swirl();
@@ -369,8 +370,8 @@ void Image::histogramEqualizer()
 	}
 	
 	double end = omp_get_wtime();
-	timeTakenParallel = end - start;
-	cout<<"Histogram Equalizer Sequential time taken End : " <<timeTakenParallel <<"\n"; 
+	timeTakenSerial = end - start;
+	cout<<"Histogram Equalizer Sequential time taken End : " <<timeTakenSerial <<"\n"; 
 }
 
 void Image::swirl()
@@ -632,17 +633,20 @@ void Image::meanFilterTest(int num_threads)
 
 void Image::histogramEqualizerParallel()
 {
-	int PAD = 1;
+	/* Padding to avoid false sharing*/
+	int PAD = 64;
 	double start = omp_get_wtime();
 	omp_set_num_threads(NUM_THREADS);
 	int hist[256*PAD];
 	for(int i=0;i<256*PAD;i+=PAD)
 	  hist[i] = 0;
 	
-	/* populate histogram with frequency*/
+	
 	omp_lock_t* lock = new omp_lock_t[256*PAD];
 	for(int i=0;i<256*PAD;i+=PAD)
 		omp_init_lock(lock+i);
+		
+	/* populate histogram with frequency*/
 	#pragma omp parallel for
 	for(int i=0;i<height;i++)
 	{
@@ -693,38 +697,30 @@ void Image::histogramEqualizerParallel()
 	}
 	
 	double end = omp_get_wtime();
-	timeTakenSerial = end - start;
-	cout<<"Histogram Equalizer parallel time taken End : " <<timeTakenSerial <<"\n"; 
+	timeTakenParallel = end - start;
+	cout<<"Histogram Equalizer parallel time taken End : " <<timeTakenParallel <<"\n"; 
 	gain = timeTakenSerial/timeTakenParallel;
 }
 
-void Image::histogramEqualizerTest(int num_threads)
+
+void Image::histogramEqualizerParallelNoLock()
 {
 	int PAD = 1;
 	double start = omp_get_wtime();
-	omp_set_num_threads(num_threads);
+	omp_set_num_threads(NUM_THREADS);
 	int hist[256*PAD];
 	for(int i=0;i<256*PAD;i+=PAD)
 	  hist[i] = 0;
 	
-	/* populate histogram with frequency*/
-	omp_lock_t* lock = new omp_lock_t[256*PAD];
-	for(int i=0;i<256*PAD;i+=PAD)
-		omp_init_lock(lock+i);
-	#pragma omp parallel for
+	//#pragma omp parallel for
 	for(int i=0;i<height;i++)
 	{
 		for(int j=0;j<width;j++)
 		{
 			int val = imageData[i][j]*PAD;
-			omp_set_lock(lock + val);
-			//#pragma omp critical
 			++hist[val];
-			omp_unset_lock(lock + val);
 		}
 	}
-	for(int i=0;i<256*PAD;i+=PAD)
-		omp_destroy_lock(lock+i);
 	int localSum = 0, cumulativeMin = 255,firstFlag = false;
 	
 	/* prepare cumulative histogram */
@@ -741,6 +737,73 @@ void Image::histogramEqualizerTest(int num_threads)
 			localSum = hist[i];
 		}
 	}	
+	unsigned char normalized[256*PAD];
+	for(int i=0;i<256*PAD;i+=PAD)
+	{
+		if(hist[i])
+		{
+			double val = ((double)(hist[i] - cumulativeMin)) / ((double)(height*width - 1)) * 255.0;
+			normalized[i] = std::round(val);
+		}
+	}
+	omp_set_num_threads(NUM_THREADS);
+	#pragma omp parallel for
+	for(int i=0;i<height;i++)
+	{
+		for(int j=0;j<width;j++)
+		{
+			processedDataParallel[i][j] = normalized[imageData[i][j]*PAD];
+		}
+	}
+	
+	double end = omp_get_wtime();
+	timeTakenParallel = end - start;
+	cout<<"Histogram Equalizer parallel time taken End : " <<timeTakenParallel <<"\n"; 
+	gain = timeTakenSerial/timeTakenParallel;
+}
+void Image::histogramEqualizerTest(int num_threads)
+{
+	int PAD = 1;
+	double start = omp_get_wtime();
+	omp_set_num_threads(num_threads);
+	int hist[256*PAD];
+	for(int i=0;i<256*PAD;i+=PAD)
+	  hist[i] = 0;
+	
+	//omp_lock_t* lock = new omp_lock_t[256*PAD];
+	//for(int i=0;i<256*PAD;i+=PAD)
+		//omp_init_lock(lock+i);
+	/* populate histogram with frequency*/	
+	//#pragma omp parallel for  
+	for(int i=0;i<height;i++)
+	{
+		for(int j=0;j<width;j++)
+		{
+			int val = imageData[i][j]*PAD;
+			//omp_set_lock(lock + val);
+			//#pragma omp critical   // degrades performance drastically
+			++hist[val];
+			//omp_unset_lock(lock + val);
+		}
+	}
+	//for(int i=0;i<256*PAD;i+=PAD)
+		//omp_destroy_lock(lock+i);
+	int localSum = 0, cumulativeMin = 255,firstFlag = false;
+	
+	/* prepare cumulative histogram */
+	for(int i=0;i<256*PAD;i+=PAD)
+	{
+		if(hist[i])
+		{
+			if(!firstFlag)
+			{
+				firstFlag = true;
+				cumulativeMin = hist[i];
+			}
+			hist[i] = localSum + hist[i];
+			localSum = hist[i];
+		}
+	}
 	unsigned char normalized[256*PAD];
 	for(int i=0;i<256*PAD;i+=PAD)
 	{
@@ -835,7 +898,7 @@ int main()
     
 	char input[30] = "image/";
 	strcat(input,imageFileName);
-	cout << input ;
+	cout << "Enter Image File Name : " ;
 	Image i(input);
 	i.readImage();
 	cout<<"What type of Image Processing \n";
@@ -880,7 +943,7 @@ int main()
 	{
 		i.histogramEqualizer();
 		i.writeImage("image/processed.bmp",false);
-		i.histogramEqualizerParallel();
+		i.histogramEqualizerParallelNoLock();
 		i.writeImage("image/processedParallel.bmp",true);
 		cout<< "Gain compared to Sequencial Algo is " <<  i.getGain() << " times\n";
 		res = i.checkSol();
