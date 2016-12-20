@@ -648,14 +648,14 @@ void Image::histogramEqualizerParallel()
 		omp_init_lock(lock+i);
 		
 	/* populate histogram with frequency*/
-	#pragma omp parallel for
+	#pragma omp parallel for //reduction (+:hist)
 	for(int i=0;i<height;i++)
 	{
 		for(int j=0;j<width;j++)
 		{
 			int val = imageData[i][j]*PAD;
 			omp_set_lock(lock + val);
-			//#pragma omp critical
+			//#pragma omp critical  // very very expensive
 			++hist[val];
 			omp_unset_lock(lock + val);
 		}
@@ -713,7 +713,7 @@ void Image::histogramEqualizerParallelNoLock()
 	for(int i=0;i<256*PAD;i+=PAD)
 	  hist[i] = 0;
 	
-	//#pragma omp parallel for
+	#pragma omp parallel for reduction(+:hist)
 	for(int i=0;i<height;i++)
 	{
 		for(int j=0;j<width;j++)
